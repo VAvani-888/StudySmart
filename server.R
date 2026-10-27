@@ -2,79 +2,96 @@
 library(shiny)
 
 shinyServer(function(input, output) {
+  
+  # Calculate an illustrative study habit index from 0 to 100
+  study_components <- reactive({
     
-    # Calculate a study habit index from 0 to 100
-    study_score <- reactive({
-        study_component <- (input$study_hours / 10) * 100
-        attendance_component <- input$attendance
-        
-        sleep_component <- max(
-            0,
-            100 - abs(input$sleep_hours - 8) * 20
-        )
-        
-        round(
-            0.45 * study_component +
-                0.35 * attendance_component +
-                0.20 * sleep_component
-        )
-    })
+    # Diminishing returns from additional study hours
+    study_component <- 100 *
+      (1 - exp(-input$study_hours / 3.5)) /
+      (1 - exp(-10 / 3.5))
     
-    # Display the calculated index
-    output$score <- renderText({
-        paste(study_score(), "/ 100")
-    })
+    # Attendance contributes directly
+    attendance_component <- input$attendance
     
-    # Explain the result
-    output$interpretation <- renderText({
-        score <- study_score()
-        
-        if (score >= 80) {
-            "Strong study habit index. Keep your routine consistent."
-        } else if (score >= 60) {
-            "Moderate study habit index. Look for one habit you can improve."
-        } else {
-            "There is room to improve. Try adjusting your routine gradually."
-        }
-    })
+    # Sleep score peaks at 8 hours and decreases gradually
+    sleep_component <- 100 * exp(
+      -0.5 * ((input$sleep_hours - 8) / 1.5)^2
+    )
     
-    # Create illustrative example data for the chart
-    output$studyPlot <- renderPlot({
-        
-        example_students <- data.frame(
-            study_hours = c(1, 2, 2.5, 3, 3.5, 4, 4.5, 5,
-                            5.5, 6, 6.5, 7, 8, 9),
-            habit_index = c(25, 35, 32, 45, 42, 55, 52, 65,
-                            60, 72, 68, 78, 85, 92)
-        )
-        
-        plot(
-            example_students$study_hours,
-            example_students$habit_index,
-            xlim = c(0, 10),
-            ylim = c(0, 100),
-            xlab = "Study hours per day",
-            ylab = "Illustrative study habit index",
-            main = "Study Hours and Study Habit Index",
-            pch = 16
-        )
-        
-        # Mark the user's current selection
-        points(
-            input$study_hours,
-            study_score(),
-            col = "red",
-            pch = 19,
-            cex = 1.7
-        )
-        
-        legend(
-            "topleft",
-            legend = c("Illustrative examples", "Your selected habits"),
-            col = c("black", "red"),
-            pch = 19,
-            bty = "n"
-        )
+    list(
+      Study = min(100, max(0, study_component)),
+      Attendance = min(100, max(0, attendance_component)),
+      Sleep = min(100, max(0, sleep_component))
+    )
+  })
+  
+  study_score <- reactive({
+    components <- study_components()
+    
+    round(
+      0.40 * components$Study +
+        0.35 * components$Attendance +
+        0.25 * components$Sleep
+    )
+  })
+  
+  # Display the calculated index
+  output$score <- renderText({
+    paste(study_score(), "/ 100")
+  })
+  
+  # Explain the result
+  output$interpretation <- renderText({
+    score <- study_score()
+    components <- study_components()
+    
+    weakest <- names(which.min(unlist(components)))
+    
+    if (score >= 80) {
+      paste(
+        "Strong study habit index.",
+        "Your lowest-scoring area is",
+        tolower(weakest),
+        "- consider whether it needs attention."
+      )
+    } else if (score >= 60) {
+      paste(
+        "Moderate study habit index.",
+        "Your lowest-scoring area is",
+        tolower(weakest),
+        "- consider one realistic improvement."
+      )
+    } else {
+      paste(
+        "There is room to improve.",
+        "Start with your lowest-scoring area:",
+        tolower(weakest),
+        "and make gradual changes."
+      )
+    }
+  })
+  
+  # Display component scores instead of misleading comparisons
+  output$studyPlot <- renderPlot({
+    
+    components <- unlist(study_components())
+    
+    barplot(
+      components,
+      ylim = c(0, 100),
+      ylab = "Component score (0-100)",
+      main = "Your Study Habit Breakdown",
+      col = c("steelblue", "darkseagreen3", "goldenrod2"),
+      border = NA,
+      las = 1
+    )
+    
+    abline(h = 50, lty = 2, col = "grey50")
+  })
+  
+})
+
     })
     
 })
